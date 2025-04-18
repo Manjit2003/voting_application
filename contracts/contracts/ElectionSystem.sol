@@ -32,7 +32,6 @@ contract ElectionSystem is Ownable {
         _;
     }
 
-    // Only admin can add candidates
     function addCandidate(
         string memory _name
     ) external onlyOwner electionOngoing {
@@ -42,7 +41,6 @@ contract ElectionSystem is Ownable {
         emit CandidateAdded(candidateCount, _name);
     }
 
-    // Voters can cast their vote
     function castVote(uint256 _candidateId) external electionOngoing {
         require(candidates[_candidateId].exists, "Candidate does not exist");
         require(!hasVoted[msg.sender], "Already voted");
@@ -51,13 +49,11 @@ contract ElectionSystem is Ownable {
         hasVoted[msg.sender] = true;
         candidates[_candidateId].voteCount++;
 
-        // Burn the voting token after use
         votingToken.transferFrom(msg.sender, address(this), 1);
 
         emit VoteCast(msg.sender, _candidateId);
     }
 
-    // Admin can end the election and declare winner
     function endElection() external onlyOwner electionOngoing {
         require(candidateCount > 0, "No candidates");
 
@@ -77,7 +73,6 @@ contract ElectionSystem is Ownable {
         emit ElectionEnded(winnerId, maxVotes);
     }
 
-    // View functions
     function getCandidate(
         uint256 _candidateId
     ) external view returns (string memory name, uint256 voteCount) {

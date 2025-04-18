@@ -1,100 +1,141 @@
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
+// SPDX-License-Identifier: Proprietary
+// Compatible with OpenZeppelin Contracts ^5.0.0
+pragma solidity ^0.8.22;
 
-import "@openzeppelin/contracts/access/Ownable.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
-import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import {Governor} from "@openzeppelin/contracts/governance/Governor.sol";
+import {GovernorCountingSimple} from "@openzeppelin/contracts/governance/extensions/GovernorCountingSimple.sol";
+import {GovernorSettings} from "@openzeppelin/contracts/governance/extensions/GovernorSettings.sol";
+import {GovernorTimelockControl} from "@openzeppelin/contracts/governance/extensions/GovernorTimelockControl.sol";
+import {GovernorVotes} from "@openzeppelin/contracts/governance/extensions/GovernorVotes.sol";
+import {GovernorVotesQuorumFraction} from "@openzeppelin/contracts/governance/extensions/GovernorVotesQuorumFraction.sol";
+import {IVotes} from "@openzeppelin/contracts/governance/utils/IVotes.sol";
+import {TimelockController} from "@openzeppelin/contracts/governance/TimelockController.sol";
 
-contract VotingSystem is Ownable, Pausable, ReentrancyGuard {
-    // Structs
-    struct Voter {
-        bool isRegistered;
-        bool hasVoted;
-        uint256 votingCoin;
-        bytes32 voteHash;
+/// @custom:security-contact manjit2003@proton.me
+contract VotingSystem is
+    Governor,
+    GovernorSettings,
+    GovernorCountingSimple,
+    GovernorVotes,
+    GovernorVotesQuorumFraction,
+    GovernorTimelockControl
+{
+    constructor(
+        IVotes _token,
+        TimelockController _timelock
+    )
+        Governor("VotingSystem")
+        GovernorSettings(7200 /* 1 day */, 50400 /* 1 week */, 0)
+        GovernorVotes(_token)
+        GovernorVotesQuorumFraction(4)
+        GovernorTimelockControl(_timelock)
+    {}
+
+    // The following functions are overrides required by Solidity.
+
+    function votingDelay()
+        public
+        view
+        override(Governor, GovernorSettings)
+        returns (uint256)
+    {
+        return super.votingDelay();
     }
 
-    struct Candidate {
-        string name;
-        string constituency;
-        uint256 voteCount;
+    function votingPeriod()
+        public
+        view
+        override(Governor, GovernorSettings)
+        returns (uint256)
+    {
+        return super.votingPeriod();
     }
 
-    // State variables
-    mapping(address => Voter) public voters;
-    Candidate[] public candidates;
-    
-    // Events
-    event VoterRegistered(address indexed voter);
-    event VoteCast(address indexed voter, bytes32 voteHash);
-    event CandidateAdded(uint256 indexed candidateId, string name, string constituency);
-
-    constructor() Ownable(msg.sender) {
+    function quorum(
+        uint256 blockNumber
+    )
+        public
+        view
+        override(Governor, GovernorVotesQuorumFraction)
+        returns (uint256)
+    {
+        return super.quorum(blockNumber);
     }
 
-    // Admin functions
-    function addCandidate(string memory name, string memory constituency) external onlyOwner {
-        candidates.push(Candidate({
-            name: name,
-            constituency: constituency,
-            voteCount: 0
-        }));
-        emit CandidateAdded(candidates.length - 1, name, constituency);
+    function state(
+        uint256 proposalId
+    )
+        public
+        view
+        override(Governor, GovernorTimelockControl)
+        returns (ProposalState)
+    {
+        return super.state(proposalId);
     }
 
-    function pause() external onlyOwner {
-        _pause();
+    function proposalNeedsQueuing(
+        uint256 proposalId
+    ) public view override(Governor, GovernorTimelockControl) returns (bool) {
+        return super.proposalNeedsQueuing(proposalId);
     }
 
-    function unpause() external onlyOwner {
-        _unpause();
+    function proposalThreshold()
+        public
+        view
+        override(Governor, GovernorSettings)
+        returns (uint256)
+    {
+        return super.proposalThreshold();
     }
 
-    // Voter functions
-    function registerVoter() external whenNotPaused {
-        require(!voters[msg.sender].isRegistered, "Voter already registered");
-        
-        voters[msg.sender] = Voter({
-            isRegistered: true,
-            hasVoted: false,
-            votingCoin: 1,
-            voteHash: bytes32(0)
-        });
-        
-        emit VoterRegistered(msg.sender);
+    function _queueOperations(
+        uint256 proposalId,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(Governor, GovernorTimelockControl) returns (uint48) {
+        return
+            super._queueOperations(
+                proposalId,
+                targets,
+                values,
+                calldatas,
+                descriptionHash
+            );
     }
 
-    function castVote(uint256 candidateId) external whenNotPaused nonReentrant {
-        require(voters[msg.sender].isRegistered, "Voter not registered");
-        require(!voters[msg.sender].hasVoted, "Already voted");
-        require(voters[msg.sender].votingCoin == 1, "No voting coin available");
-        require(candidateId < candidates.length, "Invalid candidate");
-
-        // Create vote hash
-        bytes32 voteHash = keccak256(abi.encodePacked(msg.sender, candidateId, block.timestamp));
-        
-        // Update voter status
-        voters[msg.sender].hasVoted = true;
-        voters[msg.sender].votingCoin = 0;
-        voters[msg.sender].voteHash = voteHash;
-        
-        // Update candidate vote count
-        candidates[candidateId].voteCount++;
-        
-        emit VoteCast(msg.sender, voteHash);
+    function _executeOperations(
+        uint256 proposalId,
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(Governor, GovernorTimelockControl) {
+        super._executeOperations(
+            proposalId,
+            targets,
+            values,
+            calldatas,
+            descriptionHash
+        );
     }
 
-    // View functions
-    function getCandidateCount() external view returns (uint256) {
-        return candidates.length;
+    function _cancel(
+        address[] memory targets,
+        uint256[] memory values,
+        bytes[] memory calldatas,
+        bytes32 descriptionHash
+    ) internal override(Governor, GovernorTimelockControl) returns (uint256) {
+        return super._cancel(targets, values, calldatas, descriptionHash);
     }
 
-    function getVoterStatus(address voter) external view returns (bool isRegistered, bool hasVoted, uint256 votingCoin) {
-        Voter memory v = voters[voter];
-        return (v.isRegistered, v.hasVoted, v.votingCoin);
+    function _executor()
+        internal
+        view
+        override(Governor, GovernorTimelockControl)
+        returns (address)
+    {
+        return super._executor();
     }
-
-    function verifyVote(address voter, bytes32 voteHash) external view returns (bool) {
-        return voters[voter].voteHash == voteHash;
-    }
-} 
+}

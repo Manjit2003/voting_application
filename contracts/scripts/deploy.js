@@ -10,7 +10,7 @@ async function main() {
   await votingToken.deployed();
   console.log("VotingToken deployed to:", votingToken.address);
 
-  // Deploy ElectionSystem
+  // Deploy Electi//onSystem
   const ElectionSystem = await hre.ethers.getContractFactory("ElectionSystem");
   const electionSystem = await ElectionSystem.deploy(votingToken.address);
   await electionSystem.deployed();
